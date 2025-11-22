@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EvalúaPro: Evaluación Asistida por IA (Grado 6/7)</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/webcamjs/1.0.26/webcam.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    
+    <style>
+        :root {
+            /* ?? Paleta de colores 1: Azul-Cielo */
+            --color-primary: #007bff; /* Azul vibrante */
+            --color-secondary: #e9ecef; /* Gris claro */
+            --color-bg-light: #f8f9fa;
+            --color-text-dark: #343a40;
+            
+            /* ?? Paleta de colores 2: Verde-Menta para Neumorphism */
+            --color-neo-light: #eff3f6;
+            --color-neo-dark: #c8d0e7;
+            --color-neo-shadow: #a7aaaf;
+            
+            /* Glassmorphism */
+            --color-glass-bg: rgba(255, 255, 255, 0.2);
+            --color-glass-border: rgba(255, 255, 255, 0.4);
+            --color-glass-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #a8c0ff, #3f51b5); /* Degradado de fondo */
+            color: var(--color-text-dark);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 20px;
+        }
+
+        /* ??? Glassmorphism Base */
+        .glass-container {
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            background-color: var(--color-glass-bg);
+            border: 1px solid var(--color-glass-border);
+            box-shadow: var(--color-glass-shadow);
+            border-radius: 20px;
+            padding: 25px;
+            margin: 15px;
+            max-width: 95%;
+            width: 800px;
+            box-sizing: border-box;
+        }
+
+        /* ?? Neumorphism Base para botones e inputs */
+        .neo-element {
+            border-radius: 15px;
+            background: var(--color-neo-light);
+            box-shadow: 6px 6px 12px var(--color-neo-shadow), 
+                       -6px -6px 12px #ffffff;
+            transition: all 0.2s ease;
+        }
+
+        .neo-element:active {
+            box-shadow: inset 4px 4px 8px var(--color-neo-shadow), 
+                        inset -4px -4px 8px #ffffff;
+        }
+
+        /* ?? Estilos Específicos */
+        h1 {
+            color: var(--color-text-dark);
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .camera-container, .results-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        #camera-feed, #photo-preview {
+            width: 100%;
+            max-width: 400px;
+            height: auto;
+            border-radius: 10px;
+            border: 3px solid var(--color-primary);
+            box-shadow: 0 0 15px rgba(0, 123, 255, 0.5);
+        }
+
+        button {
+            padding: 12px 25px;
+            font-size: 1em;
+            cursor: pointer;
+            border: none;
+            color: var(--color-text-dark);
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        /* Estilos del modal de API Key y Ayuda */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding-top: 50px;
+        }
+
+        .modal-content {
+            background-color: var(--color-neo-light);
+            margin: auto;
+            padding: 30px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+        
+        .close-button {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--color-text-dark);
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .close-button:hover {
+            transform: rotate(180deg); /* Efecto de giro */
+            color: var(--color-primary);
+        }
+        
+        #api-key-input {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            border: none;
+            box-sizing: border-box;
+            font-size: 1em;
+        }
+
+        /* ?? Botones de Utilidad Flotantes */
+        .utility-buttons {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 500;
+        }
+        
+        .utility-buttons button {
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            padding: 0;
+            justify-content: center;
+            font-size: 1.5em;
+        }
+
+        /* ?? Sección de Resultados */
+        .result-box {
+            background-color: #ffffff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #final-score {
+            font-size: 3em;
+            font-weight: bold;
+            color: #d9534f; /* Rojo de advertencia */
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        #ia-feedback-text {
+            white-space: pre-wrap; /* Respeta saltos de línea del feedback de IA */
+            text-align: left;
+            margin-top: 15px;
+            border-left: 5px solid var(--color-primary);
+            padding-left: 10px;
+        }
+        
+        /* ?? Footer */
+        footer {
+            margin-top: 30px;
+            padding: 15px;
+            color: #ffffff;
+            text-align: center;
+            font-size: 0.8em;
+            background: rgba(0, 0, 0, 0.2);
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        @media (max-width: 768px) {
+            .glass-container {
+                padding: 15px;
+                margin: 10px;
+            }
+            .utility-buttons {
+                top: 10px;
+                right: 10px;
+            }
+            .utility-buttons button {
+                width: 40px;
+                height: 40px;
+                font-size: 1.2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    
+    <div class="utility-buttons">
+        <button id="btn-api-modal" class="neo-element" title="Configurar API Key">
+            ??
+        </button>
+        <button id="btn-help-modal" class="neo-element" title="Ayuda y Explicación">
+            ??
+        </button>
+    </div>
+
+    <div class="glass-container">
+        <h1>Evaluación de Números Enteros y Escritura (Grados 6/7)</h1>
+        
+        <div class="camera-container">
+            <h2>Paso 1: Capturar la Evaluación</h2>
+            <div id="camera-feed"></div>
+            <button id="capture-button" class="neo-element" onclick="captureImage()">
+                <span style="font-size: 1.5em;">??</span> Tomar Foto y Analizar
+            </button>
+        </div>
+
+        <hr>
+
+        <div class="results-container" id="results-section" style="display:none;">
+            <h2>Paso 2: Análisis y Retroalimentación</h2>
+            
+            <div class="glass-container" style="background-color: rgba(255, 255, 255, 0.5); width: 100%;">
+                <h3>Resumen de la Evaluación</h3>
+                <p>Valoración Final (0 a 5.0):</p>
+                <div id="final-score">0.0</div>
+                <div id="plotly-graph" style="height: 250px;"></div>
+                
+                <div class="result-box">
+                    <h4>Observaciones de la IA (Gemini)</h4>
+                    <p style="font-weight: bold;">El texto analizado (OCR) es:</p>
+                    <pre id="ocr-text" style="background: #f1f1f1; padding: 10px; border-radius: 5px;"></pre>
+                    <p style="font-weight: bold; color: var(--color-primary);">Retroalimentación detallada:</p>
+                    <div id="ia-feedback-text">Esperando el análisis de la IA...</div>
+                </div>
+            </div>
+            
+            <img id="annotated-image" src="" alt="Imagen con Observaciones" style="display:none; max-width: 100%; margin-top: 20px; border-radius: 10px;">
+        </div>
+    </div>
+    
+    <div id="api-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeModal('api-modal')">?</span>
+            <h2>?? Configuración de Google AI Studio API Key</h2>
+            <p>Por favor, ingresa tu clave API de Gemini para permitir el análisis avanzado de la escritura y matemáticas.</p>
+            <input type="password" id="api-key-input" placeholder="Ingresa tu API Key (Ej: AIzaSy...)" class="neo-element">
+            <button id="save-api-key" class="neo-element" onclick="saveApiKey()">
+                ?? Guardar Clave
+            </button>
+            <p style="font-size: 0.8em; margin-top: 15px;">La clave se guarda localmente en tu navegador. Puedes obtener una clave gratuita en <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>.</p>
+        </div>
+    </div>
+
+    <div id="help-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeModal('help-modal')">?</span>
+            <h2>?? Ayuda de EvalúaPro</h2>
+            
+            <p>EvalúaPro es una herramienta pedagógica que analiza la escritura y el conocimiento matemático de estudiantes de grados 6to y 7mo, enfocándose en el conjunto de los **Números Enteros** ($\mathbb{Z}$).</p>
+            
+            <ol>
+                <li>
+                    <strong>Captura:</strong> Usa el botón ?? para tomar una foto clara de la evaluación escrita.
+                </li>
+                <li>
+                    <strong>Análisis (OCR):</strong> El sistema usa Tesseract.js para convertir la imagen en texto legible.
+                </li>
+                <li>
+                    <strong>Análisis (IA - Gemini):</strong> La IA realiza una doble evaluación:
+                    <ul>
+                        <li>
+                            **Literaria/Pedagógica:** Sugerencias sobre la **forma y sintaxis** de la escritura.
+                        </li>
+                        <li>
+                            **Matemática:** Valoración del conocimiento de los **números enteros**, el uso de **signos (+/-)**, el **orden** y la **ubicación en la recta numérica**. Ejemplo: Analizar la comprensión de que $3 + (-5) = -2$.
+                        </li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>Valoración Final:</strong> Se asigna una nota de **0.0 a 5.0**, siguiendo los estándares de calificación colombianos.
+                </li>
+            </ol>
+            <p style="color: red;"><strong>Importante:</strong> La claridad de la caligrafía impacta directamente la precisión del OCR y el análisis de la IA.</p>
+        </div>
+    </div>
+
+    <footer>
+        Creado por **Alfonso Navarro Restrepo** y asistido por **Gemini IA**, derechos reservados de autor.
+    </footer>
+
+    <script>
+        
+        // ??? CONFIGURACIÓN GLOBAL ???
+        const AI_MODEL = 'gemini-2.5-flash';
+        let GEMINI_API_KEY = localStorage.getItem('geminiApiKey') || '';
+        const captureButton = document.getElementById('capture-button');
+        
+        // -----------------------------------------------------------
+        // ?? MÓDULO 1: MANEJO DE API KEY Y MODALES ??
+        // -----------------------------------------------------------
+        
+        /**
+         * ?? Abre el modal de configuración de la API Key.
+         */
+        document.getElementById('btn-api-modal').onclick = () => {
+            document.getElementById('api-key-input').value = GEMINI_API_KEY;
+            document.getElementById('api-modal').style.display = 'block';
+        };
+
+        /**
+         * ?? Abre el modal de ayuda.
+         */
+        document.getElementById('btn-help-modal').onclick = () => {
+            document.getElementById('help-modal').style.display = 'block';
+        };
+
+        /**
+         * ? Cierra un modal específico.
+         * @param {string} id - El ID del modal a cerrar.
+         */
+        function closeModal(id) {
+            document.getElementById(id).style.display = 'none';
+        }
+
+        /**
+         * ?? Guarda la API Key en el Local Storage.
+         */
+        function saveApiKey() {
+            const apiKeyInput = document.getElementById('api-key-input').value.trim();
+            if (apiKeyInput) {
+                localStorage.setItem('geminiApiKey', apiKeyInput);
+                GEMINI_API_KEY = apiKeyInput;
+                alert('API Key guardada exitosamente.');
+                closeModal('api-modal');
+            } else {
+                alert('Por favor, ingresa una API Key válida.');
+            }
+        }
+        
+        // -----------------------------------------------------------
+        // ?? MÓDULO 2: CÁMARA Y CAPTURA (Webcam.js) ??
+        // -----------------------------------------------------------
+
+        /**
+         * ?? Inicializa el feed de la cámara.
+         */
+        function setupCamera() {
+            Webcam.set({
+                width: 400,
+                height: 300,
+                image_format: 'jpeg',
+                jpeg_quality: 90,
+                constraints: {
+                    facingMode: 'environment' // Prioriza la cámara trasera en móviles
+                }
+            });
+            Webcam.attach('#camera-feed');
+            console.log("Cámara inicializada.");
+        }
+
+        window.onload = setupCamera;
+
+        /**
+         * ??? Toma la foto y comienza el flujo de análisis.
+         */
+        function captureImage() {
+            if (!GEMINI_API_KEY) {
+                alert('?? ¡Atención! Por favor, configura tu API Key de Gemini primero.');
+                document.getElementById('btn-api-modal').click();
+                return;
+            }
+            
+            captureButton.innerHTML = '<span style="font-size: 1.5em;">?</span> Analizando...';
+            captureButton.disabled = true;
+
+            Webcam.snap(async (data_uri) => {
+                // Muestra la sección de resultados
+                document.getElementById('results-section').style.display = 'flex';
+                // La URI contiene la imagen en formato Base64
+                const base64Image = data_uri.split(',')[1]; 
+
+                // 1. OCR Local (Tesseract.js)
+                const ocrResult = await performOcr(data_uri);
+                document.getElementById('ocr-text').textContent = ocrResult;
+                
+                // 2. Análisis Avanzado (Gemini API)
+                await analyzeWithGemini(base64Image, ocrResult);
+                
+                captureButton.innerHTML = '<span style="font-size: 1.5em;">??</span> Tomar Foto y Analizar';
+                captureButton.disabled = false;
+            });
+        }
+        
+        // -----------------------------------------------------------
+        // ?? MÓDULO 3: OCR LOCAL (Tesseract.js) ??
+        // -----------------------------------------------------------
+
+        /**
+         * ?? Realiza OCR en la imagen usando Tesseract.js.
+         * @param {string} imageUri - URI de la imagen Base64.
+         * @returns {Promise<string>} Texto reconocido.
+         */
+        async function performOcr(imageUri) {
+            console.log('Iniciando OCR con Tesseract.js...');
+            try {
+                const worker = await Tesseract.createWorker('spa'); // Usar español
+                const { data: { text } } = await worker.recognize(imageUri);
+                await worker.terminate();
+                console.log('OCR Completo.');
+                return text;
+            } catch (error) {
+                console.error('Error en Tesseract OCR:', error);
+                return 'ERROR: No se pudo leer el texto (OCR fallido).';
+            }
+        }
+
+        // -----------------------------------------------------------
+        // ?? MÓDULO 4: ANÁLISIS CON IA (Gemini API) ??
+        // -----------------------------------------------------------
+        
+        /**
+         * ?? Envía la imagen y el texto OCR a Gemini para un análisis multimodal y pedagógico.
+         * @param {string} base64Image - Imagen en Base64.
+         * @param {string} ocrText - Texto reconocido por OCR.
+         */
+        async function analyzeWithGemini(base64Image, ocrText) {
+            document.getElementById('ia-feedback-text').textContent = 'Consultando a Gemini para la evaluación detallada...';
+            
+            const prompt = `
+                Eres un Doctor en Matemáticas y experto en Pedagogía, con conocimiento de los estándares educativos de Colombia (grados 6-7).
+                Tu misión es evaluar la evaluación de un estudiante.
+
+                **DATOS DE ENTRADA:**
+                1. Texto OCR: "${ocrText}" (Texto crudo, puede tener errores de reconocimiento).
+                2. Imagen adjunta (La imagen original de la evaluación).
+
+                **CRITERIOS DE EVALUACIÓN (0.0 a 5.0):**
+                * **Conocimiento Matemático (Números Enteros):** Valoración de operaciones, el uso correcto de signos (+/-), y la comprensión del orden y ubicación en la recta numérica. (Peso 60%)
+                * **Escritura y Sintaxis (Forma y Fondo):** Sugerencias de mejora en la legibilidad, sintaxis y ortografía. (Peso 40%)
+
+                **FORMATO DE RESPUESTA REQUERIDO (JSON):**
+                DEBES devolver *SOLO* un objeto JSON que siga exactamente esta estructura. NO incluyas explicaciones o texto fuera del JSON.
+
+                {
+                    "valoracion_final": "X.X", // (Nota final de 0.0 a 5.0, con un decimal, según el estándar Colombiano).
+                    "retroalimentacion": {
+                        "matematicas": "Observaciones específicas sobre el manejo de números enteros, signos, orden y recta numérica.",
+                        "lenguaje_escritura": "Sugerencias claras para mejorar la caligrafía, legibilidad, sintaxis y ortografía, basándote en el texto reconocido y la imagen."
+                    },
+                    "observaciones_rojas_texto_plano": "Crea una lista concisa de correcciones o anotaciones (máximo 5) que se harían sobre la imagen en color rojo. Ejemplo: 'Error en signo de (-2) + 5' o 'Mejorar trazo del número 7'."
+                }
+            `;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${AI_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: prompt },
+                                { inlineData: { mimeType: 'image/jpeg', data: base64Image } }
+                            ]
+                        }]
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Error en la API: ${response.statusText} (${response.status})`);
+                }
+                
+                const data = await response.json();
+                
+                // Procesamiento de la respuesta (Gemini a veces envuelve el JSON en texto)
+                const textResponse = data.candidates[0].content.parts[0].text.trim();
+                const jsonMatch = textResponse.match(/```json\s*([\s\S]*?)\s*```/);
+                
+                let iaData;
+                if (jsonMatch && jsonMatch[1]) {
+                    iaData = JSON.parse(jsonMatch[1]);
+                } else {
+                    iaData = JSON.parse(textResponse); // Intentar parsear directo si no tiene las marcas
+                }
+                
+                updateResults(iaData);
+
+            } catch (error) {
+                console.error('Error al comunicarse con Gemini API:', error);
+                document.getElementById('ia-feedback-text').innerHTML = `
+                    <p style="color: red; font-weight: bold;">?? Error en el Análisis de IA:</p>
+                    <p>Verifica tu API Key o el formato de respuesta del modelo.</p>
+                    <p>Detalle: ${error.message}</p>
+                `;
+                document.getElementById('final-score').textContent = 'N/A';
+            }
+        }
+        
+        // -----------------------------------------------------------
+        // ?? MÓDULO 5: VISUALIZACIÓN DE RESULTADOS ??
+        // -----------------------------------------------------------
+        
+        /**
+         * ?? Actualiza la interfaz con los datos de la IA y dibuja el gráfico.
+         * @param {object} data - El objeto JSON de la IA.
+         */
+        function updateResults(data) {
+            const score = parseFloat(data.valoracion_final).toFixed(1);
+            document.getElementById('final-score').textContent = score;
+
+            document.getElementById('ia-feedback-text').innerHTML = `
+                <h5 style="color: #007bff;">? Observaciones Matemáticas (Números Enteros):</h5>
+                <p>${data.retroalimentacion.matematicas}</p>
+                <h5 style="color: #007bff;">?? Sugerencias de Escritura (Sintaxis y Forma):</h5>
+                <p>${data.retroalimentacion.lenguaje_escritura}</p>
+                <h5 style="color: red;">?? Anotaciones para la Imagen:</h5>
+                <pre>${data.observaciones_rojas_texto_plano}</pre>
+            `;
+            
+            // Lógica para el gráfico (Ejemplo simple de ubicación en la recta)
+            // Esto es un placeholder para demostrar el uso de Plotly.js
+            drawScoreGauge(score);
+        }
+
+        /**
+         * ?? Dibuja un medidor simple de la calificación usando Plotly.js.
+         * @param {string} score - Puntuación final.
+         */
+        function drawScoreGauge(score) {
+            const data = [{
+                type: 'indicator',
+                mode: 'gauge+number',
+                value: parseFloat(score),
+                title: { text: 'Nota Final (0.0 - 5.0)', font: { size: 18 } },
+                gauge: {
+                    axis: { range: [0, 5], tickwidth: 1, tickcolor: "darkblue" },
+                    bar: { color: "rgba(0, 0, 0, 0.5)" },
+                    bgcolor: "white",
+                    borderwidth: 2,
+                    bordercolor: "gray",
+                    steps: [
+                        { range: [0, 2.9], color: "rgba(255, 99, 132, 0.7)" }, // Rojo (Insuficiente)
+                        { range: [3.0, 3.9], color: "rgba(255, 205, 86, 0.7)" }, // Amarillo (Aceptable)
+                        { range: [4.0, 5.0], color: "rgba(75, 192, 192, 0.7)" }  // Verde (Sobresaliente)
+                    ],
+                    threshold: {
+                        line: { color: "red", width: 4 },
+                        thickness: 0.75,
+                        value: parseFloat(score)
+                    }
+                }
+            }];
+
+            const layout = {
+                margin: { t: 0, b: 0, l: 30, r: 30 },
+                paper_bgcolor: "transparent", // Para que coincida con el glassmorphism
+                plot_bgcolor: "transparent",
+            };
+
+            Plotly.newPlot('plotly-graph', data, layout);
+        }
+
+        // -----------------------------------------------------------
+        // ??? NOTA SOBRE ANOTACIÓN DE IMAGEN ???
+        // La anotación de imagen (pintar en rojo) requiere la librería Three.js (no usada aquí por complejidad)
+        // o lógica avanzada de Canvas para dibujar el texto rojo basado en las coordenadas
+        // que el modelo Gemini debería idealmente retornar. Por simplicidad, solo se muestra la lista de
+        // "observaciones_rojas_texto_plano".
+        // -----------------------------------------------------------
+        
+    </script>
+</body>
+</html>
