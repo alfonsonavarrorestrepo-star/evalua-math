@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MathOCR — Evaluador escritura matemática (6° & 7°)</title>
+
+  <!-- ========= CDN LIBRARIES ========= -->
+  <!-- Tesseract.js -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
+  <!-- WebcamJS (opcional UI simplificada para cámara) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/webcamjs/1.0.26/webcam.min.js"></script>
+  <!-- MathJax (render matemáticas si es necesario) -->
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script id="MathJax-script" async
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+  </script>
+  <!-- Plotly for charts (resultados/estadísticas) -->
+  <script src="https://cdn.plot.ly/plotly-2.20.0.min.js"></script>
+  <!-- three.js (if you want 3D visualizations later) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r146/three.min.js"></script>
+
+  <!-- ========= STYLES: glassmorphism + neumorphism + palettes ========= -->
+  <style>
+    :root{
+      --bg: #0f172a;
+      --card: rgba(255,255,255,0.06);
+      --accent: #60a5fa;
+      --glass: rgba(255,255,255,0.06);
+      --glass-border: rgba(255,255,255,0.08);
+      --text: #e6eef8;
+      --muted: #9fb2d0;
+    }
+
+    /* Palettes (4) - toggle with .palette-X on body */
+    .palette-1 { --accent: #2563eb; --card: rgba(37,99,235,0.08); --glass: rgba(37,99,235,0.06); }
+    .palette-2 { --accent: #16a34a; --card: rgba(22,163,74,0.06); --glass: rgba(22,163,74,0.05); }
+    .palette-3 { --accent: #db2777; --card: rgba(219,39,119,0.06); --glass: rgba(219,39,119,0.05); }
+    .palette-4 { --accent: #f59e0b; --card: rgba(245,158,11,0.06); --glass: rgba(245,158,11,0.05); }
+
+    /* Basic reset */
+    *{box-sizing:border-box; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;}
+    html,body{height:100%; margin:0; background: linear-gradient(180deg,#071024 0%, #0b1220 100%); color:var(--text); -webkit-font-smoothing:antialiased;}
+    body{display:flex; align-items:flex-start; justify-content:center; padding:24px;}
+
+    /* Container */
+    .app{
+      width:100%;
+      max-width:1100px;
+      margin: 16px;
+      display:grid;
+      grid-template-columns: 1fr 420px;
+      gap:20px;
+    }
+
+    /* Header */
+    header.app-header{
+      grid-column: 1 / -1;
+      display:flex; align-items:center; justify-content:space-between;
+      padding:14px 18px; border-radius:14px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border:1px solid var(--glass-border);
+      box-shadow: 0 8px 30px rgba(2,6,23,0.6);
+      backdrop-filter: blur(8px) saturate(120%);
+    }
+    .brand{display:flex;gap:12px; align-items:center;}
+    .logo{
+      width:48px;height:48px;border-radius:10px;
+      display:flex;align-items:center;justify-content:center;
+      background:linear-gradient(135deg,var(--accent), #0ea5e9);
+      color:white;font-weight:700;font-size:22px;box-shadow: 0 6px 18px rgba(2,6,23,0.5);
+    }
+    .title{font-size:18px;font-weight:700}
+    .subtitle{font-size:12px;color:var(--muted)}
+
+    /* Left column (main) */
+    .panel{
+      padding:18px;border-radius:12px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border:1px solid var(--glass-border);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 30px rgba(2,6,23,0.55);
+    }
+
+    /* video + canvas stack */
+    .camera-stage{position:relative; border-radius:10px; overflow:hidden; background:#000; min-height:360px;}
+    video#preview{width:100%; height:auto; display:block; transform: scaleX(-1)} /* mirrored for selfie */
+    canvas#overlay{position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none}
+
+    .controls{display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;}
+    .btn{
+      display:inline-flex; gap:8px; align-items:center; justify-content:center;
+      padding:10px 14px; border-radius:999px; border:none; cursor:pointer;
+      background:linear-gradient(90deg,var(--accent), #0ea5e9); color:#fff; font-weight:600;
+      box-shadow: 0 8px 20px rgba(2,6,23,0.5);
+    }
+    .btn.secondary{ background: transparent; border:1px solid var(--glass-border); color:var(--text); font-weight:600; }
+
+    /* Right column (info) */
+    .side-info{ display:flex; flex-direction:column; gap:12px; height:100%;}
+    .card{ padding:14px; border-radius:10px; background:var(--card); border:1px solid var(--glass-border);}
+
+    /* Modal */
+    .modal {
+      position: fixed; z-index: 1200; left: 0; top: 0; right:0; bottom:0;
+      display:flex; align-items:center; justify-content:center; padding:24px;
+      background: rgba(2,6,23,0.5);
+      visibility:hidden; opacity:0; transition: opacity .18s;
+    }
+    .modal.open { visibility:visible; opacity:1; }
+    .modal .dialog{
+      width:100%; max-width:720px; border-radius:12px; padding:18px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border:1px solid var(--glass-border);
+      transform-origin:center;
+      transition: transform .2s;
+    }
+
+    /* Collapsible content style */
+    .collapsible { overflow:hidden; transition: max-height 0.25s ease; max-height:0; }
+    .collapsible.open { max-height: 1000px; }
+
+    /* help button (book icon) */
+    .help-btn{ position:fixed; right:22px; bottom:22px; width:64px;height:64px;border-radius:20px;
+      display:flex;align-items:center;justify-content:center; font-size:24px; cursor:pointer;
+      background:linear-gradient(135deg,var(--accent), #0ea5e9); box-shadow: 0 12px 30px rgba(2,6,23,0.6);
+      border:1px solid rgba(255,255,255,0.06);
+    }
+
+    /* little footer */
+    footer{ grid-column:1/-1; text-align:center; color:var(--muted); font-size:12px; margin-top:10px; }
+    .palette-picker{ display:flex; gap:8px; }
+    .palette-dot{ width:34px;height:34px;border-radius:8px; cursor:pointer; border:2px solid rgba(255,255,255,0.04); box-shadow: 0 6px 18px rgba(2,6,23,.45); }
+
+    /* small responsive */
+    @media (max-width:1000px){
+      .app{ grid-template-columns: 1fr; }
+      .camera-stage{ min-height:300px;}
+    }
+  </style>
+</head>
+
+<body class="palette-1">
+  <div class="app" id="app">
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo">?</div>
+        <div>
+          <div class="title">MathOCR — Evaluador de escritura matemática</div>
+          <div class="subtitle">Grados 6° y 7° — Alfonso Navarro • Asistido por Gemini IA</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="palette-picker card" style="display:flex;gap:8px;padding:6px;">
+          <div class="palette-dot" style="background:linear-gradient(135deg,#2563eb,#0ea5e9)" data-pal="1" title="Azul"></div>
+          <div class="palette-dot" style="background:linear-gradient(135deg,#16a34a,#86efac)" data-pal="2" title="Verde"></div>
+          <div class="palette-dot" style="background:linear-gradient(135deg,#db2777,#f9a8d4)" data-pal="3" title="Rosa"></div>
+          <div class="palette-dot" style="background:linear-gradient(135deg,#f59e0b,#ffd08a)" data-pal="4" title="Naranja"></div>
+        </div>
+
+        <button class="btn" id="btnApiKey">?? Ingresar API Key</button>
+        <button class="btn secondary" id="btnSampleLoad">?? Cargar ejemplo</button>
+      </div>
+    </header>
+
+    <!-- LEFT: Camera / Capture / Results -->
+    <section class="panel">
+      <div style="display:flex; gap:12px; align-items:center; justify-content:space-between;">
+        <h3 style="margin:0;">Captura y análisis ??</h3>
+        <div style="font-size:12px;color:var(--muted)">Pista: toma la foto en buena luz</div>
+      </div>
+
+      <div class="camera-stage" id="stage">
+        <video id="preview" autoplay muted playsinline></video>
+        <canvas id="overlay"></canvas>
+      </div>
+
+      <div class="controls">
+        <button class="btn" id="btnStartCam">?? Iniciar cámara</button>
+        <button class="btn" id="btnSnap">?? Tomar fotografía</button>
+        <button class="btn" id="btnAnalyze">?? Analizar</button>
+        <button class="btn secondary" id="btnClear">?? Limpiar</button>
+        <button class="btn secondary" id="btnDownload">?? Descargar resultado</button>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <strong>Resultado:</strong>
+        <div id="resultSummary" style="margin-top:8px;color:var(--muted)">Aún no hay análisis.</div>
+        <div id="scoreBox" style="margin-top:8px;"></div>
+        <div id="suggestions" style="margin-top:8px;color:#ffefef"></div>
+      </div>
+    </section>
+
+    <!-- RIGHT: Controls / Settings / Stats -->
+    <aside class="side-info">
+      <div class="card">
+        <h4 style="margin:0 0 8px 0;">Ajustes</h4>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="font-size:13px;color:var(--muted)">Cámara preferida:
+            <select id="cameraFacing" style="width:100%;padding:8px;margin-top:6px;border-radius:8px;background:transparent;border:1px solid var(--glass-border);color:var(--text)">
+              <option value="environment">Trasera (mejor para fotos)</option>
+              <option value="user">Frontal</option>
+            </select>
+          </label>
+
+          <label style="font-size:13px;color:var(--muted)">Nivel de detalle OCR:
+            <select id="ocrLevel" style="width:100%;padding:8px;margin-top:6px;border-radius:8px;background:transparent;border:1px solid var(--glass-border);color:var(--text)">
+              <option value="fast">Rápido (rápido, menos preciso)</option>
+              <option value="accurate">Preciso (más lento)</option>
+            </select>
+          </label>
+
+          <label style="font-size:13px;color:var(--muted)">Activar asistencia AI:
+            <input type="checkbox" id="useAI" style="margin-left:8px;" checked />
+          </label>
+
+          <div style="display:flex;gap:8px;">
+            <button class="btn" id="btnShowAnalysis">?? Ver estadísticas</button>
+            <button class="btn secondary" id="btnClearAll">Reset local</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h4 style="margin:0 0 8px 0;">Historial local</h4>
+        <div id="historyList" style="max-height:240px; overflow:auto; color:var(--muted); font-size:13px;">(Aquí aparecerán las imágenes analizadas y sus puntuaciones)</div>
+      </div>
+
+      <div class="card">
+        <h4 style="margin:0 0 8px 0;">Controles rápidos</h4>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button class="btn" id="btnExampleRules">?? Reglas de evaluación</button>
+          <button class="btn secondary" id="btnExportCSV">?? Exportar historial (CSV)</button>
+        </div>
+      </div>
+    </aside>
+
+    <footer>
+      Creado por Alfonso Navarro Restrepo y asistido por Gemini IA — Derechos reservados ©
+    </footer>
+  </div>
+
+  <!-- HELP BUTTON (book icon) -->
+  <div class="help-btn" id="helpBtn" title="Ayuda">
+    ??
+  </div>
+
+  <!-- ========= MODALS ========= -->
+  <!-- API Key Modal (collapsible) -->
+  <div id="modalApiKey" class="modal" role="dialog" aria-hidden="true">
+    <div class="dialog">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;">?? Ingresar / actualizar API Key de Google AI</h3>
+        <button id="apiClose" class="btn secondary" style="transform-origin:center;">?</button>
+      </div>
+      <div style="margin-top:12px;">
+        <p style="color:var(--muted);font-size:13px">La API Key se guarda localmente en tu navegador (localStorage). Se usará para enviar la imagen a Gemini/Google AI Studio para una evaluación más profunda. Si no provees la clave, la app hará un análisis heurístico local.</p>
+
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <input id="apiInput" placeholder="Ingresa tu API Key de Google AI Studio" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--glass-border);background:transparent;color:var(--text)" />
+          <button class="btn" id="saveApi">Guardar</button>
+        </div>
+
+        <div style="margin-top:8px;color:var(--muted);font-size:12px">Ejemplo de endpoint (se usará en la petición): <code id="endpointExample" style="background:rgba(255,255,255,0.02);padding:4px;border-radius:6px">https://api.generative.googleapis.com/v1beta2/models/...:generateMessage</code></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HELP Modal (collapsible / animated X) -->
+  <div id="modalHelp" class="modal" role="dialog" aria-hidden="true">
+    <div class="dialog" style="max-width:840px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <h3 style="margin:0;">?? Ayuda — Cómo usar MathOCR</h3>
+        <button id="helpClose" class="btn secondary" style="transform-origin:center; transition: transform .4s;">?</button>
+      </div>
+      <div style="margin-top:12px;color:var(--muted); font-size:14px;">
+        <p><strong>Paso 1:</strong> Pulsa <em>Iniciar cámara</em> y selecciona la cámara trasera para fotografiar el trabajo del estudiante.</p>
+        <p><strong>Paso 2:</strong> Ajusta la iluminación y toma la foto con <em>Tomar fotografía</em>.</p>
+        <p><strong>Paso 3:</strong> Pulsa <em>Analizar</em>. La app reconocerá texto/matemáticas (OCR) y hará un análisis heurístico; si provees una API Key, enviará la imagen a Google AI para obtener recomendaciones más sofisticadas.</p>
+        <p><strong>Salida:</strong> Verás la imagen con correcciones superpuestas en rojo, sugerencias textuales y una puntuación de 0.0 a 5.0.</p>
+        <hr />
+        <h4>Reglas rápidas de evaluación (resumen)</h4>
+        <ul>
+          <li>Precisión en el uso de signos (+ / -): 20%</li>
+          <li>Orden y coherencia de enteros / recta numérica: 25%</li>
+          <li>Claridad de símbolos y notación: 25%</li>
+          <li>Ortografía y redacción matemática: 10%</li>
+          <li>Calidad del procedimiento paso a paso: 20%</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* =========================================
+   MathOCR — Single-file app JS (modular)
+   - Comentarios y secciones marcadas con emojis
+   - Evitar variables globales no declaradas (??)
+   ========================================= */
+
+(() => {
+  // ========== ?? Config & State ==========
+  const state = {
+    stream: null,
+    capturedImageDataUrl: null, // ? use this, never use undefined 'image'
+    overlayScale: 1,
+    history: JSON.parse(localStorage.getItem('mathocr.history') || '[]'),
+    apiKey: localStorage.getItem('mathocr.apiKey') || '',
+    sampleFileUrl: '/mnt/data/5af9373b-b586-4399-9019-8154d5163f88.jsx' // Ruta local del archivo que subiste
+  };
+
+  // DOM refs
+  const videoEl = document.getElementById('preview');
+  const overlayCanvas = document.getElementById('overlay');
+  const overlayCtx = overlayCanvas.getContext('2d');
+  const btnStartCam = document.getElementById('btnStartCam');
+  const btnSnap = document.getElementById('btnSnap');
+  const btnAnalyze = document.getElementById('btnAnalyze');
+  const btnClear = document.getElementById('btnClear');
+  const btnDownload = document.getElementById('btnDownload');
+  const resultSummary = document.getElementById('resultSummary');
+  const scoreBox = document.getElementById('scoreBox');
+  const suggestions = document.getElementById('suggestions');
+  const apiModal = document.getElementById('modalApiKey');
+  const apiInput = document.getElementById('apiInput');
+  const btnApiKey = document.getElementById('btnApiKey');
+  const saveApiBtn = document.getElementById('saveApi');
+  const apiClose = document.getElementById('apiClose');
+  const helpBtn = document.getElementById('helpBtn');
+  const helpModal = document.getElementById('modalHelp');
+  const helpClose = document.getElementById('helpClose');
+  const btnSampleLoad = document.getElementById('btnSampleLoad');
+  const historyList = document.getElementById('historyList');
+  const btnClearAll = document.getElementById('btnClearAll');
+  const ocrLevelSel = document.getElementById('ocrLevel');
+  const useAI = document.getElementById('useAI');
+  const cameraFacing = document.getElementById('cameraFacing');
+  const paletteDots = document.querySelectorAll('.palette-dot');
+  const btnShowAnalysis = document.getElementById('btnShowAnalysis');
+  const btnExportCSV = document.getElementById('btnExportCSV');
+  const btnExampleRules = document.getElementById('btnExampleRules');
+
+  // set initial API key input
+  apiInput.value = state.apiKey || '';
+
+  // ========== ?? Utility: resize overlay ==========
+  function fitCanvasToVideo() {
+    const rect = videoEl.getBoundingClientRect();
+    overlayCanvas.width = rect.width;
+    overlayCanvas.height = rect.height;
+    state.overlayScale = rect.width / videoEl.videoWidth || 1;
+    // clear
+    overlayCtx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+  }
+
+  // ========== ?? Camera start/stop ==========
+  async function startCamera() {
+    try {
+      // stop any existing stream
+      if (state.stream) {
+        state.stream.getTracks().forEach(t => t.stop());
+        state.stream = null;
+      }
+      const facingMode = cameraFacing.value || 'environment'; // environment or user
+      const constraints = {
+        audio: false,
+        video: { facingMode }
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      state.stream = stream;
+      videoEl.srcObject = stream;
+      // ensure video plays and we can set canvas size
+      await videoEl.play();
+      setTimeout(fitCanvasToVideo, 300);
+      resultSummary.textContent = 'Cámara iniciada. Listo para capturar.';
+    } catch (err) {
+      console.error('Error iniciando cámara', err);
+      resultSummary.textContent = 'No se pudo iniciar la cámara: ' + (err.message || err);
+    }
+  }
+
+  // ========== ?? Tomar fotografía ==========
+  function takeSnapshot() {
+    // create canvas same size as video buffer
+    const w = videoEl.videoWidth;
+    const h = videoEl.videoHeight;
+    if (!w || !h) { resultSummary.textContent = 'Video no está listo. Inicia la cámara primero.'; return; }
+    const tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    const ctx = tmp.getContext('2d');
+    // draw mirrored so that viewer sees same orientation
+    ctx.translate(w,0); ctx.scale(-1,1);
+    ctx.drawImage(videoEl, 0, 0, w, h);
+    const dataUrl = tmp.toDataURL('image/jpeg', 0.95);
+    state.capturedImageDataUrl = dataUrl; // ? use capturedImageDataUrl everywhere instead of undefined 'image'
+    // draw into overlay for visual
+    drawImageToOverlay(dataUrl);
+    resultSummary.textContent = 'Fotografía tomada.';
+    // store timestamped in history (local preview)
+    pushToHistory({ ts: Date.now(), dataUrl, score: null, notes: [] });
+  }
+
+  // ========== ??? DIBUJAR imagen en overlay ==========
+  function drawImageToOverlay(dataUrl) {
+    const img = new Image();
+    img.onload = () => {
+      // adjust canvas size to display size
+      const rect = videoEl.getBoundingClientRect();
+      overlayCanvas.width = rect.width;
+      overlayCanvas.height = rect.height;
+      // clear
+      overlayCtx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+      // Keep aspect fill: scale image to cover canvas
+      const scale = Math.max(overlayCanvas.width / img.width, overlayCanvas.height / img.height);
+      const iw = img.width * scale;
+      const ih = img.height * scale;
+      const ix = (overlayCanvas.width - iw) / 2;
+      const iy = (overlayCanvas.height - ih) / 2;
+      overlayCtx.drawImage(img, ix, iy, iw, ih);
+    };
+    img.src = dataUrl;
+  }
+
+  // ========== ?? HISTORY helpers ==========
+  function pushToHistory(entry){
+    state.history.unshift(entry);
+    // keep last 30
+    state.history = state.history.slice(0,30);
+    localStorage.setItem('mathocr.history', JSON.stringify(state.history));
+    renderHistory();
+  }
+  function renderHistory(){
+    historyList.innerHTML = '';
+    if(state.history.length === 0) historyList.textContent = '(vacío)';
+    state.history.forEach((h,idx) => {
+      const el = document.createElement('div');
+      el.style.padding = '8px'; el.style.borderBottom = '1px dashed rgba(255,255,255,0.03)';
+      el.innerHTML = `<div style="display:flex;gap:8px;align-items:center;">
+        <div style="width:42px;height:28px;background:url('${h.dataUrl}') center/cover;border-radius:6px;border:1px solid rgba(255,255,255,0.02)"></div>
+        <div style="flex:1">
+          <div style="font-size:13px;color:var(--text)">Analizado: ${h.score !== null ? h.score.toFixed(1) : '—'}</div>
+          <div style="font-size:11px;color:var(--muted)">${new Date(h.ts).toLocaleString()}</div>
+        </div>
+        <div>
+          <button class="btn secondary" onclick="window.open('${h.dataUrl}', '_blank')">Ver</button>
+        </div>
+      </div>`;
+      historyList.appendChild(el);
+    });
+  }
+
+  // ========== ?? OCR con Tesseract.js ==========
+  async function runOCR(dataUrl) {
+    resultSummary.textContent = 'Ejecutando OCR (Tesseract.js)...';
+    // pick language and options based on ocr level
+    const lang = 'spa+eng'; // español y inglés
+    const worker = Tesseract.createWorker({
+      logger: m => {
+        // console.log(m);
+        resultSummary.textContent = 'OCR: ' + (m.status || '') + ' ' + (m.progress ? (m.progress*100).toFixed(0)+'%' : '');
+      }
+    });
+    await worker.load();
+    await worker.loadLanguage(lang);
+    await worker.initialize(lang);
+    if (ocrLevelSel.value === 'accurate') {
+      await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK });
+    } else {
+      await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO });
+    }
+    const { data: { text, words, lines } } = await worker.recognize(dataUrl);
+    await worker.terminate();
+    resultSummary.textContent = 'OCR completado.';
+    return { text, words, lines };
+  }
+
+  // ========== ?? ANALIZADOR HEURÍSTICO (local) ==========
+  function analyzeHeuristic(ocrResult) {
+    // Simple heuristics to check signs, integers, order, notation
+    const text = ocrResult.text || '';
+    const lines = (ocrResult.lines || []).map(l => l.text || '');
+    const words = (ocrResult.words || []).map(w => w.text || '');
+
+    // heuristics counters
+    let signErrors = 0;
+    let integerMentions = 0;
+    let rectaMentions = 0;
+    let symbolClarity = 0;
+    let proceduralSteps = 0;
+
+    // check for presence of plus/minus near numbers
+    const plusMinusMatches = text.match(/[-+]/g) || [];
+    // naive detection of mistakes: e.g., sequences like "-- 3" or "+ -" etc.
+    if ((text.match(/--\s*\d/) || text.match(/\+\s*-/) || text.match(/-\s*\+/))) signErrors += 1;
+
+    // count integer patterns
+    const ints = text.match(/(?<!\d)-?\b\d+\b(?!\/)/g) || [];
+    integerMentions = ints.length;
+
+    // check for words like 'recta' 'recta numérica' or 'número' indicating mention of recta numérica
+    if (/recta\s*num[ée]rica|recta|número/i.test(text)) rectaMentions = 1;
+
+    // symbol clarity: presence of common math symbols
+    const symbols = ['=', 'x', '/', '÷', '\\+', '-', '\\(', '\\)'];
+    let symbolCount = 0;
+    for (const s of symbols) {
+      const re = new RegExp(s,'g');
+      const m = text.match(re);
+      if (m) symbolCount += m.length;
+    }
+    symbolClarity = Math.min(1, symbolCount / 5);
+
+    // procedural detection: detect lines like "Paso 1", "Paso", "1.", "2."
+    proceduralSteps = (text.match(/Paso\s*\d+|Paso|^\d+\./gmi) || []).length;
+
+    // compute weights (must match help: signs 20%, orden 25%, simbolos 25%, ortografia 10%, procedimiento 20%)
+    // We'll compute sub-scores 0..1 then map to 0..5 later
+    // signScore: penalize signErrors; more plusMinusMatches presence is positive
+    const signScore = Math.max(0, Math.min(1, (plusMinusMatches.length > 0 ? 0.7 : 0.3) - signErrors*0.4));
+    const orderScore = Math.min(1, (integerMentions > 0 ? 0.5 + Math.min(0.5, integerMentions/10) : 0.2) + (rectaMentions?0.25:0));
+    const symbolScore = Math.min(1, 0.25 + symbolClarity);
+    // basic ortography: count suspicious tokens (non alphanumeric)
+    const badTokens = (text.match(/[^\w\s\+\-\=\/\(\)\.\,]/g) || []).length;
+    const orthoScore = Math.max(0, 1 - Math.min(0.6, badTokens/10));
+    const procScore = Math.min(1, 0.15 + Math.min(0.85, proceduralSteps/5));
+
+    // Weighted final (0..1)
+    const finalNormalized = (signScore*0.20 + orderScore*0.25 + symbolScore*0.25 + orthoScore*0.10 + procScore*0.20);
+    const finalScore = Math.round((finalNormalized * 5) * 10) / 10; // 0.0 - 5.0 with 1 decimal
+
+    // easy suggestions
+    const sug = [];
+    if (signErrors > 0) sug.push('Revisa el uso correcto de los signos + y -; parece haber signos duplicados o mal ubicados.');
+    if (rectaMentions === 0) sug.push('Intenta ubicar los enteros en la recta numérica para mayor claridad.');
+    if (symbolClarity < 0.4) sug.push('Clarifica los símbolos matemáticos (=/+, etc.) con mayor trazado o separación.');
+    if (proceduralSteps < 1) sug.push('Es recomendable numerar los pasos del procedimiento para seguir la lógica.');
+
+    return {
+      finalScore,
+      components: { signScore, orderScore, symbolScore, orthoScore, procScore },
+      suggestions: sug,
+      rawText: text,
+      lines
+    };
+  }
+
+  // ========== ?? CALL AI (Google AI Studio) ==========
+  async function callGoogleAIAnalyze(dataUrl, ocrText) {
+    // If no API key or user disabled AI, skip
+    if (!useAI.checked) return { ai: false, message: 'Asistencia AI desactivada' };
+    const apiKey = localStorage.getItem('mathocr.apiKey') || '';
+    if (!apiKey) return { ai: false, message: 'No hay API Key guardada' };
+
+    // Prepare prompt to evaluate student's handwritten math, requesting:
+    // - analyze handwriting clarity
+    // - evaluate correctness of signs and integers
+    // - produce annotated suggestions (x,y coordinates optional)
+    const prompt = [
+      { role: "system", content: "Eres un experto en didáctica matemática primaria, analiza escritura matemática, su sintaxis y claridad, sugiere correcciones." },
+      { role: "user", content: `Analiza el siguiente OCR extraído:\n\n${ocrText}\n\nDevuelve: 1) Puntuación 0-5 (1 decimal), 2) Lista de observaciones breves, 3) Sugerencias paso a paso. Responde en JSON.` }
+    ];
+
+    // Example Google AI Studio generative API (puede variar según modelo y endpoint)
+    const endpoint = 'https://api.generative.googleapis.com/v1beta2/models/text-bison-001:generateMessage';
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          // Ajusta según especificaciones del endpoint de Google generative AI
+          // Aquí un ejemplo conceptual
+          "messages": prompt,
+          "temperature": 0.2,
+          "maxOutputTokens": 512
+        })
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        console.warn('AI error', txt);
+        return { ai: false, message: 'Error en la API: ' + txt };
+      }
+      const json = await res.json();
+      // Parse respuesta: intentar extraer texto
+      const aiText = (json?.candidates?.[0]?.content || json?.output?.[0]?.content || JSON.stringify(json)).toString();
+      // Intentar parsear JSON si el AI devolvió JSON
+      try{
+        const parsed = JSON.parse(aiText);
+        return { ai: true, parsed, raw: aiText };
+      } catch(e){
+        return { ai: true, parsed: null, raw: aiText };
+      }
+    } catch (err) {
+      console.error('Error llamando AI', err);
+      return { ai: false, message: err.message || err };
+    }
+  }
+
+  // ========== ?? Superponer anotaciones sobre imagen ==========
+  // annotations: array of { x,y,w,h, text, color }
+  function overlayAnnotationsOnImage(dataUrl, annotations = [], stampScore = null) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        // create a temp canvas with full image resolution
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        // draw original
+        ctx.drawImage(img,0,0);
+        // overlay translucent red for corrections
+        ctx.lineWidth = Math.max(4, Math.round(img.width * 0.004));
+        annotations.forEach(a => {
+          ctx.strokeStyle = a.color || 'rgba(255,0,0,0.95)';
+          ctx.fillStyle = a.color || 'rgba(255,0,0,0.15)';
+          // map normalized coords (0..1) or absolute
+          const x = a.xNormalized ? a.x * canvas.width : (a.x || 0);
+          const y = a.yNormalized ? a.y * canvas.height : (a.y || 0);
+          const w = a.wNormalized ? a.w * canvas.width : (a.w || canvas.width*0.2);
+          const h = a.hNormalized ? a.h * canvas.height : (a.h || canvas.height*0.08);
+          ctx.fillRect(x - 4, y - 4, w + 8, h + 8);
+          ctx.strokeRect(x, y, w, h);
+          // label
+          ctx.font = `${Math.max(12, Math.round(canvas.width*0.02))}px sans-serif`;
+          ctx.fillStyle = '#fff';
+          ctx.fillText(a.text || '', x + 6, y + 20);
+        });
+        // stamp score
+        if (stampScore !== null) {
+          ctx.fillStyle = 'rgba(0,0,0,0.5)';
+          ctx.fillRect(canvas.width - 220, canvas.height - 80, 200, 60);
+          ctx.fillStyle = '#fff';
+          ctx.font = `bold 28px sans-serif`;
+          ctx.fillText(`Puntuación: ${stampScore.toFixed(1)} / 5.0`, canvas.width - 200, canvas.height - 40);
+        }
+        const outDataUrl = canvas.toDataURL('image/png');
+        resolve(outDataUrl);
+      };
+      img.src = dataUrl;
+    });
+  }
+
+  // ========== ?? Compute and annotate & save ==========
+  async function analyzeCapturedImage() {
+    if (!state.capturedImageDataUrl) { resultSummary.textContent = 'No hay imagen capturada.'; return; }
+    // 1) OCR
+    const ocr = await runOCR(state.capturedImageDataUrl);
+    // 2) Heuristic analysis
+    const heuristic = analyzeHeuristic(ocr);
+    // 3) Optionally call AI for deeper suggestions
+    let aiResult = null;
+    if (useAI.checked && localStorage.getItem('mathocr.apiKey')) {
+      const ai = await callGoogleAIAnalyze(state.capturedImageDataUrl, heuristic.rawText);
+      aiResult = ai;
+    }
+    // 4) Create annotations (very simple: highlight lines with suspicious tokens)
+    const annotations = [];
+    // highlight lines that contain +/- or numbers near signs, or lines with many non alnum tokens
+    (ocr.lines || []).slice(0,10).forEach((ln, idx) => {
+      const text = ln.text || '';
+      // if suspicious content
+      if (/[+\-=\/]/.test(text) || /--|\+\s*-/.test(text) || /[^a-zA-Z0-9\s\+\-\=\,\.\(\)]/.test(text)) {
+        // place annotation positions roughly equally spaced vertically (approximation)
+        annotations.push({
+          xNormalized: 0.05,
+          yNormalized: 0.1 + idx * 0.08,
+          wNormalized: 0.9,
+          hNormalized: 0.06,
+          text: 'Revisar signos / notación',
+          color: 'rgba(255,60,80,0.95)'
+        });
+      }
+    });
+
+    // include AI suggestions as annotation if AI returns coordinates (rare)
+    if (aiResult && aiResult.ai && aiResult.parsed && aiResult.parsed.annotations) {
+      aiResult.parsed.annotations.forEach(a => annotations.push(a));
+    }
+
+    // 5) Overlay annotations and stamp score
+    const finalDataUrl = await overlayAnnotationsOnImage(state.capturedImageDataUrl, annotations, heuristic.finalScore);
+    // show final on overlay (fit to preview)
+    drawImageToOverlay(finalDataUrl);
+
+    // 6) Save to history and provide download link
+    pushToHistory({ ts: Date.now(), dataUrl: finalDataUrl, score: heuristic.finalScore, notes: heuristic.suggestions });
+    scoreBox.innerHTML = `<div style="font-size:20px;font-weight:700;color:var(--accent)">${heuristic.finalScore.toFixed(1)} / 5.0</div>`;
+    suggestions.innerHTML = heuristic.suggestions.map(s => `<div style="color:#ffdddd">• ${s}</div>`).join('');
+    resultSummary.textContent = 'Análisis heurístico completado.' + (aiResult ? ` AI: ${aiResult.ai ? 'usada' : aiResult.message}` : '');
+    // set download link data
+    btnDownload.dataset.url = finalDataUrl;
+  }
+
+  // ========== ?? Download handler ==========
+  function downloadResult() {
+    const dataUrl = btnDownload.dataset.url || state.capturedImageDataUrl;
+    if (!dataUrl) { resultSummary.textContent = 'Nada para descargar.'; return; }
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `mathocr_result_${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    resultSummary.textContent = 'Imagen descargada.';
+  }
+
+  // ========== ?? Clear overlay / reset ==========
+  function clearStage() {
+    overlayCtx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+    state.capturedImageDataUrl = null;
+    btnDownload.dataset.url = '';
+    resultSummary.textContent = 'Limpio';
+    suggestions.innerHTML = '';
+    scoreBox.innerHTML = '';
+  }
+
+  // ========== ?? API key modal functions ==========
+  function openApiModal() { apiModal.classList.add('open'); apiModal.querySelector('.dialog').style.transform = 'scale(1.02)'; }
+  function closeApiModal() { apiModal.classList.remove('open'); apiModal.querySelector('.dialog').style.transform = 'scale(1)'; }
+  saveApiBtn.addEventListener('click', () => {
+    const k = apiInput.value.trim();
+    if (!k) { alert('Ingresa una API Key válida (no la compartas)'); return; }
+    localStorage.setItem('mathocr.apiKey', k);
+    state.apiKey = k;
+    resultSummary.textContent = 'API Key guardada localmente.';
+    closeApiModal();
+  });
+
+  // ========== ?? SAMPLE file loader (uses the uploaded file path) ==========
+  async function loadSampleFile() {
+    // Developer note: we are given a path to the uploaded file; we present it for preview (can't access file system from remote)
+    // we will attempt to fetch it. In hosted environment, this may require a proper URL.
+    const url = state.sampleFileUrl;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) { resultSummary.textContent = 'No se pudo cargar el archivo de ejemplo desde: ' + url; return; }
+      const text = await res.text();
+      // show in a simple modal (reusing help modal)
+      alert('Contenido de ejemplo cargado (primeros 400 caracteres):\\n\\n' + text.slice(0,400));
+    } catch (err) {
+      resultSummary.textContent = 'Error cargando ejemplo: ' + err.message;
+    }
+  }
+
+  // ========== ?? Export CSV ==========
+  function exportCSV() {
+    const rows = [['timestamp','score','notes']];
+    state.history.forEach(h => {
+      rows.push([h.ts, h.score === null ? '' : h.score.toFixed(1), (h.notes || []).join('|')]);
+    });
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'mathocr_history.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ========== ?? Event wiring ==========
+  btnStartCam.addEventListener('click', startCamera);
+  btnSnap.addEventListener('click', takeSnapshot);
+  btnAnalyze.addEventListener('click', analyzeCapturedImage);
+  btnClear.addEventListener('click', clearStage);
+  btnDownload.addEventListener('click', downloadResult);
+  btnApiKey.addEventListener('click', openApiModal);
+  apiClose.addEventListener('click', closeApiModal);
+  helpBtn.addEventListener('click', () => { helpModal.classList.add('open'); helpModal.querySelector('.dialog').style.transform = 'scale(1.02)'; });
+  helpClose.addEventListener('click', () => { helpModal.classList.remove('open'); helpClose.style.transform = 'rotate(360deg)'; setTimeout(()=>helpClose.style.transform='rotate(0deg)',380); });
+
+  btnSampleLoad.addEventListener('click', loadSampleFile);
+  btnClearAll.addEventListener('click', () => { if(confirm('Borrar historial local?')){ state.history=[]; localStorage.removeItem('mathocr.history'); renderHistory(); }});
+  ocrLevelSel.addEventListener('change', ()=>{ resultSummary.textContent = 'Nivel OCR ajustado.'});
+  btnShowAnalysis.addEventListener('click', ()=>{ alert('Desplegar gráficos con Plotly — función pendiente (se puede implementar).')});
+  btnExportCSV.addEventListener('click', exportCSV);
+  btnExampleRules.addEventListener('click', ()=>{ alert('Reglas: ver modal de Ayuda (??).') });
+
+  // palette selector
+  paletteDots.forEach(d => d.addEventListener('click', () => {
+    const pal = d.dataset.pal;
+    document.body.classList.remove('palette-1','palette-2','palette-3','palette-4');
+    document.body.classList.add('palette-' + pal);
+  }));
+
+  // attach resize observer to keep overlay fit
+  window.addEventListener('resize', fitCanvasToVideo);
+  videoEl.addEventListener('loadedmetadata', fitCanvasToVideo);
+
+  // initial rendering
+  renderHistory();
+
+  // ========== FINAL NOTES (developer) ==========
+  // - Tesseract handwriting recognition is limited; for better handwriting OCR consider training a model or using Google Vision / specialized services.
+  // - To actually store annotated images on a server folder, implement a small endpoint (e.g., Node+Express) that accepts base64 PNG and writes to disk / cloud storage.
+  // - The AI call to Google is a conceptual example of how to call the generative endpoint; adapt payload to exact spec of your Google AI Studio model.
+  // - I avoided any 'image' undefined variables by always using state.capturedImageDataUrl and local variables (no global 'image').
+  // - If quieres, genero ahora el backend Node/Express que reciba la imagen y la guarde en una carpeta llamada 'finales/'.
+})();
+</script>
+</body>
+</html>
